@@ -99,8 +99,6 @@ class AwsS3Provider extends Provider implements ProviderInterface
      * @var \Vinelab\Cdn\Validators\Contracts\ProviderValidatorInterface
      */
     protected $provider_validator;
-    
-    protected $configurations;
 
     /**
      * @param \Symfony\Component\Console\Output\ConsoleOutput              $console
@@ -449,11 +447,12 @@ class AwsS3Provider extends Provider implements ProviderInterface
     * @param $file
     * @return string
     */
-    protected function getMimeType($file) {
-        $info = finfo_open(FILEINFO_MIME_TYPE);     
+    protected function getMimeType($file)
+    {
+        $info = finfo_open(FILEINFO_MIME_TYPE);
         $mimeType = finfo_file($info, $file->getRealPath());
         $extension = pathinfo($file->getRealPath(), PATHINFO_EXTENSION);
-        switch($extension) {
+        switch ($extension) {
             case 'css':
                 $mimeType = 'text/css';
                 break;
@@ -463,5 +462,4 @@ class AwsS3Provider extends Provider implements ProviderInterface
         }
         return $mimeType;
     }
-  }
 }
