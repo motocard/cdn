@@ -43,6 +43,7 @@ class AwsS3Provider extends Provider implements ProviderInterface
     protected $default = [
         'url' => null,
         'threshold' => 10,
+        'compress'  => [],
         'providers' => [
             'aws' => [
                 's3' => [
@@ -98,6 +99,8 @@ class AwsS3Provider extends Provider implements ProviderInterface
      * @var \Vinelab\Cdn\Validators\Contracts\ProviderValidatorInterface
      */
     protected $provider_validator;
+    
+    protected $configurations;
 
     /**
      * @param \Symfony\Component\Console\Output\ConsoleOutput              $console
@@ -190,6 +193,9 @@ class AwsS3Provider extends Provider implements ProviderInterface
 
         // user terminal message
         $this->console->writeln('<fg=yellow>Comparing local files and bucket...</fg=yellow>');
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        
+        $compressedFiles = [];
 
         $assets = $this->getFilesAlreadyOnBucket($assets);
 
@@ -199,25 +205,33 @@ class AwsS3Provider extends Provider implements ProviderInterface
             foreach ($assets as $file) {
                 try {
                     $this->console->writeln('<fg=cyan>'.'Uploading file path: '.$file->getRealpath().'</fg=cyan>');
-                    $command = $this->s3_client->getCommand('putObject', [
-
+                    $options = [
                         // the bucket name
                         'Bucket' => $this->getBucket(),
                         // the path of the file on the server (CDN)
                         'Key' => str_replace('\\', '/', $file->getPathName()),
-                        // the path of the path locally
-                        'Body' => fopen($file->getRealPath(), 'r'),
                         // the permission of the file
-
                         'ACL' => $this->acl,
                         'CacheControl' => $this->default['providers']['aws']['s3']['cache-control'],
                         'Metadata' => $this->default['providers']['aws']['s3']['metadata'],
                         'Expires' => $this->default['providers']['aws']['s3']['expires'],
-                    ]);
-//                var_dump(get_class($command));exit();
-
-
+                    ];
+                    
+                    $ext = pathinfo($file->getRealPath(), PATHINFO_EXTENSION);
+                    if(in_array($ext, $this->default['compress'])) {
+                        $filePath = $this->gzipFile($file);
+                        $compressedFiles[] = $filePath;
+                        $options['ContentEncoding'] = 'gzip'; 
+                        $options['Body'] = fopen($filePath, 'r');
+                        $options['ContentType'] = $this->getMimeType($file);
+                    } else {
+                        $filePath = $file->getRealPath();
+                        $options['Body'] = fopen($filePath, 'r');
+                    }
+                    
+                    $command = $this->s3_client->getCommand('putObject', $options);
                     $this->s3_client->execute($command);
+                    
                 } catch (S3Exception $e) {
                     $this->console->writeln('<fg=red>'.$e->getMessage().'</fg=red>');
 
@@ -227,6 +241,8 @@ class AwsS3Provider extends Provider implements ProviderInterface
 
             // user terminal message
             $this->console->writeln('<fg=green>Upload completed successfully.</fg=green>');
+            
+            array_map('unlink', $compressedFiles);
         } else {
             // user terminal message
             $this->console->writeln('<fg=yellow>No new files to upload.</fg=yellow>');
@@ -409,4 +425,43 @@ class AwsS3Provider extends Provider implements ProviderInterface
 
         return $assets;
     }
+    
+    /**
+    * Compress file
+    * @param $file
+    *
+    * @return string
+    */
+    protected function gzipFile($file, $mode = 'wb') 
+    {
+        $gzFile = $file->getRealPath() . '.gz';
+        $gz = gzopen($gzFile, $mode);
+
+        gzwrite($gz, file_get_contents($file->getRealPath()));
+        gzclose($gz);
+
+        return $gzFile;
+    }
+
+    /**
+    * Get mimetype of file
+    *
+    * @param $file
+    * @return string
+    */
+    protected function getMimeType($file) {
+        $info = finfo_open(FILEINFO_MIME_TYPE);     
+        $mimeType = finfo_file($info, $file->getRealPath());
+        $extension = pathinfo($file->getRealPath(), PATHINFO_EXTENSION);
+        switch($extension) {
+            case 'css':
+                $mimeType = 'text/css';
+                break;
+            case 'js':
+                $mimeType = 'application/javascript';
+                break;
+        }
+        return $mimeType;
+    }
+  }
 }
