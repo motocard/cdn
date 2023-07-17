@@ -1,5 +1,5 @@
 {
-    "name": "mendicm/cdn",
+    "name": "motocard/cdn",
     "description": "Content Delivery Network (CDN) Package for Laravel",
     "license": "MIT",
     "keywords": [
